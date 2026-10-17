@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+line-bot-sdk
+requests
+matplotlib
+numpy
+metpy
