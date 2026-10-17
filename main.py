@@ -401,14 +401,14 @@ def generate_full_sounding_image(lat: float, lon: float, date_str: str, place_na
     # 場所表示の判定
     title_place = f"({place_name})" if place_name else f"({lat:.3f} N, {lon:.3f} E)"
 
-    # 1. タイトル部分（ご指定のフォーマット）
+    # 1. タイトル部分
     plt.suptitle(
         f"Swift-gram (B.C.Amatsubame) {title_place} 【{date_str} JST】\n"
         f"model : {used_model.upper()} | Wind [from / km/h] Temp [℃] Altitude [ft, hPa]",
         fontsize=15, y=0.98, fontweight='bold', color='darkslategray'
     )
 
-    # 2. 画像最下部に日本語での権利表記・免責事項を集約
+    # 2. 画像最下部に権利表記・免責事項を集約
     notice_text = (
         "【無断転載・他者への転送・二次利用を厳禁とします】\n"
         "※ 本データは計算値であり大きな誤差を含む可能性があります。フライト判断は各種気象情報を総合的に確認し、自己責任で行ってください。"
@@ -419,7 +419,7 @@ def generate_full_sounding_image(lat: float, lon: float, date_str: str, place_na
         ha='center', va='bottom', fontsize=9, color='crimson', fontweight='bold',
         linespacing=1.3
     )
-    
+
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc='upper right', bbox_to_anchor=(0.98, 0.96))
 
