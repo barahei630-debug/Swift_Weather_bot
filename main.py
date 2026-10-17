@@ -403,7 +403,7 @@ def generate_full_sounding_image(lat: float, lon: float, date_str: str, place_na
 
     # 1. タイトル部分（ご指定のフォーマット）
     plt.suptitle(
-        f"Swift-gram (B.C.Amatsubame) {title_place} 【{date_str} JST】\n"
+        f"Swift-gram (B.C.Amatsubame) {title_place} 【{date_str} JST】\n" +
         f"model : {used_model.upper()} | Wind [from / km/h] Temp [℃] Altitude [ft, hPa]",
         fontsize=15, y=0.98, fontweight='bold', color='darkslategray'
     )
