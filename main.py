@@ -397,10 +397,16 @@ def generate_full_sounding_image(lat: float, lon: float, date_str: str, place_na
         except Exception as e:
             ax.text(0.5, 0.5, f"Data Error\n{str(e)}", ha='center', va='center', color='red')
 
-    title_place = f" ({place_name})" if place_name else f" ({lat:.3f} N, {lon:.3f} E)"
-    plt.suptitle(f"Aviation Sounding Profile{title_place} [{date_str} JST]\nModel: {used_model.upper()} | Advanced Flight Weather Analysis",
-                 fontsize=16, y=0.98, fontweight='bold', color='darkslategray')
+    # 場所表示の判定
+    title_place = f"({place_name})" if place_name else f"({lat:.3f} N, {lon:.3f} E)"
 
+    # タイトル指定フォーマット
+    plt.suptitle(
+        f"Swift-gram (B.C.Amatsubame) {title_place} 【{date_str} JST】\n"
+        f"model : {used_model.upper()} | Wind [from / km/h] Temp [℃] Altitude [ft, hPa]",
+        fontsize=15, y=0.98, fontweight='bold', color='darkslategray'
+    )
+    
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc='upper right', bbox_to_anchor=(0.98, 0.96))
 
