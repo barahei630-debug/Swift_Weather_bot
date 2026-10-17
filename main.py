@@ -400,11 +400,19 @@ def generate_full_sounding_image(lat: float, lon: float, date_str: str, place_na
     # 場所表示の判定
     title_place = f"({place_name})" if place_name else f"({lat:.3f} N, {lon:.3f} E)"
 
-    # タイトル指定フォーマット
+    # 1. タイトル部分の更新（権利表記を付与）
     plt.suptitle(
         f"Swift-gram (B.C.Amatsubame) {title_place} 【{date_str} JST】\n"
-        f"model : {used_model.upper()} | Wind [from / km/h] Temp [℃] Altitude [ft, hPa]",
-        fontsize=15, y=0.98, fontweight='bold', color='darkslategray'
+        f"model : {used_model.upper()} | Wind [from / km/h] Temp [℃] Altitude [ft, hPa]\n"
+        f" Unauthorized Use & Redistribution Prohibited",
+        fontsize=14, y=0.98, fontweight='bold', color='darkslategray'
+    )
+
+    # 2. 画像最下部に免責事項（データ誤差に関する注記）を追加
+    fig.text(
+        0.5, 0.005,
+        "※ 本解析データは計算値であり、誤差を含む可能性があります。実際のフライト判断は各種気象情報を総合的に考慮し、パイロットの責任のもと行ってください。 無断転載・他者への転送を禁じます。",
+        ha='center', va='bottom', fontsize=9, color='crimson', fontweight='bold'
     )
     
     handles, labels = axes[0].get_legend_handles_labels()
