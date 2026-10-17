@@ -1,16 +1,18 @@
 import os
 import re
 import io
+import uuid
 import requests
 import numpy as np
 import matplotlib
-matplotlib.use('Agg')  # GUIなしのサーバー環境用
+matplotlib.use('Agg')  # GUIなし環境用
 import matplotlib.pyplot as plt
 
 import metpy.calc as mpcalc
 from metpy.units import units
 
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.staticfiles import StaticFiles
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging import (
@@ -20,19 +22,19 @@ from linebot.v3.webhooks import MessageEvent, TextMessageContent, LocationMessag
 
 app = FastAPI()
 
-# 環境変数の読み込み
+# 生成した画像を一時保存するディレクトリを作成し、静的ファイルとして公開
+os.makedirs("/tmp/static", exist_ok=True)
+app.mount("/static", StaticFiles(directory="/tmp/static"), name="static")
+
 CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
-IMGUR_CLIENT_ID = os.getenv("IMGUR_CLIENT_ID")
 
 handler = WebhookHandler(CHANNEL_SECRET)
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 
 
 def generate_emagram(lat: float, lon: float) -> bytes:
-    """
-    Open-Meteo APIから高層データを取得し、エマグラム(Skew-T Log-P)画像を生成してバイトデータを返す
-    """
+    """Open-Meteoから高層データを取得しエマグラム(Skew-T)画像を生成"""
     url = (
         f"https://api.open-meteo.com/v1/forecast?"
         f"latitude={lat}&longitude={lon}&"
@@ -43,7 +45,6 @@ def generate_emagram(lat: float, lon: float) -> bytes:
     res = requests.get(url, timeout=10).json()
     hourly = res.get('hourly', {})
 
-    # 1000hPa〜500hPaのデータを取得（最新時刻: index=0）
     pressures = np.array([1000, 925, 850, 700, 500]) * units.hPa
     temps = np.array([
         hourly.get('temperature_1000hPa', [0])[0],
@@ -61,7 +62,6 @@ def generate_emagram(lat: float, lon: float) -> bytes:
         hourly.get('dewpoint_500hPa', [0])[0]
     ]) * units.degC
 
-    # グラフ描画 (Skew-T 簡易表示)
     fig = plt.figure(figsize=(7, 7))
     ax = fig.add_subplot(111)
     
@@ -79,7 +79,6 @@ def generate_emagram(lat: float, lon: float) -> bytes:
     ax.grid(True, which='both', linestyle='--', alpha=0.6)
     ax.legend(loc='upper right')
 
-    # メモリ上のPNG形式バイナリとして出力
     buf = io.BytesIO()
     plt.savefig(buf, format='png', bbox_inches='tight', dpi=150)
     plt.close(fig)
@@ -87,27 +86,8 @@ def generate_emagram(lat: float, lon: float) -> bytes:
     return buf.getvalue()
 
 
-def upload_to_imgur(image_bytes: bytes, client_id: str) -> str:
-    """
-    生成した画像バイナリをImgur APIにアップロードして公開URLを取得する
-    """
-    headers = {'Authorization': f'Client-ID {client_id}'}
-    response = requests.post(
-        'https://api.imgur.com/3/image',
-        headers=headers,
-        files={'image': image_bytes},
-        timeout=15
-    )
-    res_data = response.json()
-    if response.status_code == 200 and res_data.get('success'):
-        return res_data['data']['link']
-    else:
-        raise RuntimeError(f"Imgur Upload Failed: {res_data}")
-
-
 @app.post("/callback")
 async def callback(request: Request):
-    """LINE Messaging API からの Webhook を受けるエンドポイント"""
     signature = request.headers.get("X-Line-Signature", "")
     body = (await request.body()).decode("utf-8")
     try:
@@ -118,23 +98,20 @@ async def callback(request: Request):
 
 
 @handler.add(MessageEvent, message=LocationMessageContent)
-def handle_location(event):
-    """スマホから「位置情報」が送信された場合の処理"""
+def handle_location(event, request: Request):
     lat = event.message.latitude
     lon = event.message.longitude
-    process_and_reply(event, lat, lon)
+    process_and_reply(event, request, lat, lon)
 
 
 @handler.add(MessageEvent, message=TextMessageContent)
-def handle_text(event):
-    """「34.4, 132.7」のようなテキストで座標が送信された場合の処理"""
+def handle_text(event, request: Request):
     text = event.message.text.strip()
     match = re.match(r'^([+-]?\d+(?:\.\d+)?),\s*([+-]?\d+(?:\.\d+)?)$', text)
     if match:
         lat, lon = float(match.group(1)), float(match.group(2))
-        process_and_reply(event, lat, lon)
+        process_and_reply(event, request, lat, lon)
     else:
-        # 該当しないメッセージの場合は案内を表示
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             line_bot_api.reply_message(
@@ -149,16 +126,22 @@ def handle_text(event):
             )
 
 
-def process_and_reply(event, lat: float, lon: float):
-    """画像生成・アップロード・LINE返信を一括処理"""
+def process_and_reply(event, request: Request, lat: float, lon: float):
     try:
-        # 1. 画像生成
+        # 1. エマグラム画像生成
         img_bytes = generate_emagram(lat, lon)
         
-        # 2. 画像ホスティングへアップロード
-        img_url = upload_to_imgur(img_bytes, IMGUR_CLIENT_ID)
+        # 2. ランダムなファイル名で Render サーバ上に保存
+        filename = f"{uuid.uuid4().hex}.png"
+        filepath = os.path.join("/tmp/static", filename)
+        with open(filepath, "wb") as f:
+            f.write(img_bytes)
+            
+        # 3. 自分のRenderサーバーのURLを取得して画像URLを構築
+        base_url = str(request.base_url).rstrip('/')
+        img_url = f"{base_url}/static/{filename}"
         
-        # 3. LINEへ画像メッセージ返信
+        # 4. LINEへ返信
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             line_bot_api.reply_message(
@@ -180,7 +163,7 @@ def process_and_reply(event, lat: float, lon: float):
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
                     messages=[
-                        TextMessage(text=f"処理中にエラーが発生しました:\n{e}")
+                        TextMessage(text=f"エラーが発生しました:\n{e}")
                     ]
                 )
             )
