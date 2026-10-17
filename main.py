@@ -453,7 +453,7 @@ def get_menu_flex_message(current_place="佐賀"):
             "layout": "vertical",
             "backgroundColor": "#1DB446",
             "contents": [
-                {"type": "text", "text": "🎈 気象解析メニュー", "weight": "bold", "color": "#FFFFFF", "size": "md"}
+                {"type": "text", "text": "🎈 日時・場所選択メニュー", "weight": "bold", "color": "#FFFFFF", "size": "md"}
             ]
         },
         "body": {
@@ -463,7 +463,7 @@ def get_menu_flex_message(current_place="佐賀"):
             "contents": [
                 {"type": "text", "text": f"現在選択中: 【{current_place}】", "weight": "bold", "size": "sm", "color": "#111111"},
                 {"type": "separator"},
-                {"type": "text", "text": "1. 日時を選んで解析出力", "weight": "bold", "size": "xs", "color": "#666666"},
+                {"type": "text", "text": "1. 日時を選択", "weight": "bold", "size": "xs", "color": "#666666"},
                 {
                     "type": "box",
                     "layout": "horizontal",
@@ -474,7 +474,7 @@ def get_menu_flex_message(current_place="佐賀"):
                     ]
                 },
                 {"type": "separator"},
-                {"type": "text", "text": "2. 拠点場所を変更", "weight": "bold", "size": "xs", "color": "#666666"},
+                {"type": "text", "text": "2. 場所を変更", "weight": "bold", "size": "xs", "color": "#666666"},
                 {
                     "type": "box",
                     "layout": "vertical",
@@ -484,7 +484,7 @@ def get_menu_flex_message(current_place="佐賀"):
             ]
         }
     }
-    return FlexMessage(alt_text="気象解析メニュー", contents=FlexContainer.from_dict(flex_json))
+    return FlexMessage(alt_text="日時・場所選択メニュー", contents=FlexContainer.from_dict(flex_json))
 
 # ==========================================
 # FastAPI & LINE Webhook ハンドラー
@@ -530,7 +530,7 @@ def handle_text(event):
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
                     messages=[
-                        TextMessage(text=f"地点を【{text}】に設定しました！"),
+                        TextMessage(text=f"地点を【{text}】に設定しました！初期値はこちらで確認してください→ https://open-meteo.com/en/docs/model-updates"),
                         get_menu_flex_message(current_place=text)
                     ]
                 )
