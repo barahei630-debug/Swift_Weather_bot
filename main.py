@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import japanize_matplotlib  # 日本語文字化け防止
+import japanize_matplotlib
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -32,30 +32,24 @@ CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 handler = WebhookHandler(CHANNEL_SECRET)
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 
-# ユーザーごとの選択状態を記憶 (lat, lon, name)
 user_locations = {}
 
-# 事前登録した14拠点
 LOCATIONS = {
-    "佐賀": (33.259161, 130.244743),
-    "都城": (31.796475, 131.093485),
-    "西条": (34.404989, 132.713485),
-    "三次": (34.811307, 132.860611),
-    "邑久": (34.677947, 134.077216),
-    "東近江": (35.083163, 136.196634),
-    "鈴鹿": (34.845328, 136.537272),
-    "佐久": (36.249108, 138.431620),
-    "渡良瀬": (36.253481, 139.655928),
-    "茂木": (36.532622, 140.228140),
-    "小山": (36.302975, 139.778813),
-    "一関": (38.934295, 141.158861),
-    "大崎": (38.664064, 141.162129),
-    "上士幌": (43.237823, 143.277613)
+    "佐賀": (33.2529, 130.2453),
+    "都城": (31.7196, 131.0616),
+    "西条": (34.4262, 132.7434),
+    "三次": (34.8094, 132.8532),
+    "邑久": (34.6644, 134.1206),
+    "東近江": (35.1143, 136.1661),
+    "鈴鹿": (34.8824, 136.5847),
+    "佐久": (36.2486, 138.4770),
+    "渡良瀬": (36.2230, 139.6738),
+    "茂木": (36.5385, 140.1872),
+    "小山": (36.3147, 139.8003),
+    "一関": (38.9322, 141.1331),
+    "大崎": (38.5739, 140.9572),
+    "上士幌": (43.2355, 143.2847)
 }
-
-# ==========================================
-# 気象計算・画像描画
-# ==========================================
 
 def get_dir_label(deg):
     if deg is None or np.isnan(deg): return "-"
@@ -398,27 +392,18 @@ def generate_full_sounding_image(lat: float, lon: float, date_str: str, place_na
         except Exception as e:
             ax.text(0.5, 0.5, f"Data Error\n{str(e)}", ha='center', va='center', color='red')
 
-    # 場所表示の判定
-    title_place = f"({place_name})" if place_name else f"({lat:.3f} N, {lon:.3f} E)"
+    if place_name:
+        loc_str = str(place_name)
+    else:
+        loc_str = f"{lat:.3f} N, {lon:.3f} E"
 
-    # 1. タイトル部分
-    plt.suptitle(
-        f"Swift-gram (B.C.Amatsubame) {title_place} 【{date_str} JST】\n"
-        f"model : {used_model.upper()} | Wind [from / km/h] Temp [℃] Altitude [ft, hPa]",
-        fontsize=15, y=0.98, fontweight='bold', color='darkslategray'
-    )
+    title_text = f"Swift-gram (B.C.Amatsubame) ({loc_str}) 【{date_str} JST】\nmodel : {used_model.upper()} | Wind [from / km/h] Temp [℃] Altitude [ft, hPa]"
 
-    # 2. 画像最下部に権利表記・免責事項を集約
-    notice_text = (
-        "【無断転載・他者への転送・二次利用を厳禁とします】\n"
-        "※ 本データは計算値であり大きな誤差を含む可能性があります。フライト判断は各種気象情報を総合的に確認し、自己責任で行ってください。"
-    )
-    fig.text(
-        0.5, 0.005,
-        notice_text,
-        ha='center', va='bottom', fontsize=9, color='crimson', fontweight='bold',
-        linespacing=1.3
-    )
+    plt.suptitle(title_text, fontsize=15, y=0.98, fontweight='bold', color='darkslategray')
+
+    notice_text = "【無断転載・他者への転送・二次利用を厳禁とします】\n※ 本データは計算値であり大きな誤差を含む可能性があります。フライト判断は各種気象情報を総合的に確認し、自己責任で行ってください。"
+
+    fig.text(0.5, 0.005, notice_text, ha='center', va='bottom', fontsize=9, color='crimson', fontweight='bold', linespacing=1.3)
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc='upper right', bbox_to_anchor=(0.98, 0.96))
@@ -431,14 +416,8 @@ def generate_full_sounding_image(lat: float, lon: float, date_str: str, place_na
     buf.seek(0)
     return buf.getvalue()
 
-# ==========================================
-# ボタンメニュー (Flex Message) 生成
-# ==========================================
-
 def get_menu_flex_message(current_place="佐賀"):
     buttons_contents = []
-    
-    # 14拠点をボタングリッド化
     loc_keys = list(LOCATIONS.keys())
     for i in range(0, len(loc_keys), 2):
         row_buttons = []
@@ -466,7 +445,7 @@ def get_menu_flex_message(current_place="佐賀"):
             "layout": "vertical",
             "backgroundColor": "#1DB446",
             "contents": [
-                {"type": "text", "text": "🎈 日時・場所選択メニュー", "weight": "bold", "color": "#FFFFFF", "size": "md"}
+                {"type": "text", "text": "🎈 気象解析メニュー", "weight": "bold", "color": "#FFFFFF", "size": "md"}
             ]
         },
         "body": {
@@ -476,7 +455,7 @@ def get_menu_flex_message(current_place="佐賀"):
             "contents": [
                 {"type": "text", "text": f"現在選択中: 【{current_place}】", "weight": "bold", "size": "sm", "color": "#111111"},
                 {"type": "separator"},
-                {"type": "text", "text": "1. 日時を選択", "weight": "bold", "size": "xs", "color": "#666666"},
+                {"type": "text", "text": "1. 日時を選んで解析出力", "weight": "bold", "size": "xs", "color": "#666666"},
                 {
                     "type": "box",
                     "layout": "horizontal",
@@ -487,7 +466,7 @@ def get_menu_flex_message(current_place="佐賀"):
                     ]
                 },
                 {"type": "separator"},
-                {"type": "text", "text": "2. 場所を変更", "weight": "bold", "size": "xs", "color": "#666666"},
+                {"type": "text", "text": "2. 拠点場所を変更", "weight": "bold", "size": "xs", "color": "#666666"},
                 {
                     "type": "box",
                     "layout": "vertical",
@@ -497,11 +476,7 @@ def get_menu_flex_message(current_place="佐賀"):
             ]
         }
     }
-    return FlexMessage(alt_text="日時・場所選択メニュー", contents=FlexContainer.from_dict(flex_json))
-
-# ==========================================
-# FastAPI & LINE Webhook ハンドラー
-# ==========================================
+    return FlexMessage(alt_text="気象解析メニュー", contents=FlexContainer.from_dict(flex_json))
 
 @app.post("/callback")
 async def callback(request: Request):
@@ -518,7 +493,6 @@ def handle_location(event):
     user_id = event.source.user_id
     lat, lon = event.message.latitude, event.message.longitude
     user_locations[user_id] = (lat, lon, "現在地")
-    
     jst = timezone(timedelta(hours=9))
     today_str = datetime.now(jst).strftime("%Y-%m-%d")
     process_and_reply(event, lat, lon, today_str, "現在地")
@@ -530,10 +504,8 @@ def handle_text(event):
     jst = timezone(timedelta(hours=9))
     now_jst = datetime.now(jst)
 
-    # 現在の記憶場所 (デフォルトは佐賀)
     current_lat, current_lon, current_name = user_locations.get(user_id, (33.2529, 130.2453, "佐賀"))
 
-    # A. 登録拠点ボタンが押された場合
     if text in LOCATIONS:
         lat, lon = LOCATIONS[text]
         user_locations[user_id] = (lat, lon, text)
@@ -543,14 +515,13 @@ def handle_text(event):
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
                     messages=[
-                        TextMessage(text=f"地点を【{text}】に設定しました！初期値はこちらで確認してください→ https://open-meteo.com/en/docs/model-updates"),
+                        TextMessage(text=f"地点を【{text}】に設定しました！"),
                         get_menu_flex_message(current_place=text)
                     ]
                 )
             )
         return
 
-    # B. 座標直接入力の場合
     match_coord = re.match(r'^([+-]?\d+(?:\.\d+)?),\s*([+-]?\d+(?:\.\d+)?)$', text)
     if match_coord:
         lat, lon = float(match_coord.group(1)), float(match_coord.group(2))
@@ -559,7 +530,6 @@ def handle_text(event):
         process_and_reply(event, lat, lon, today_str, "カスタム位置")
         return
 
-    # C. 日時切り替えボタンの場合
     target_date_str = None
     if text in ["今日", "きょう", "0"]:
         target_date_str = now_jst.strftime("%Y-%m-%d")
@@ -571,7 +541,6 @@ def handle_text(event):
     if target_date_str:
         process_and_reply(event, current_lat, current_lon, target_date_str, current_name)
     else:
-        # メニュー表示
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             line_bot_api.reply_message(
