@@ -9,7 +9,6 @@ from datetime import datetime, timedelta, timezone
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import japanize_matplotlib
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -365,10 +364,10 @@ def generate_full_sounding_image(lat: float, lon: float, date_str: str, place_na
             ax.axhline(ground_alt_ft, color='brown', lw=2.5, zorder=8)
 
             if i % 2 == 0: ax.set_ylabel("Altitude (AMSL)", fontsize=10)
-            if i >= 6: ax.set_xlabel("Temperature (°C)", fontsize=10)
+            if i >= 6: ax.set_xlabel("Temperature (deg C)", fontsize=10)
 
             title_suffix = " [INVERSION]" if is_surface_inversion else ""
-            ax.set_title(f"{h_jst:02d}:00 JST (Sfc: {t_arr[0]:.1f}°C){title_suffix}",
+            ax.set_title(f"{h_jst:02d}:00 JST (Sfc: {t_arr[0]:.1f}deg C){title_suffix}",
                          fontweight='bold', loc='left', fontsize=11,
                          color='crimson' if is_surface_inversion else 'black')
 
@@ -392,17 +391,12 @@ def generate_full_sounding_image(lat: float, lon: float, date_str: str, place_na
         except Exception as e:
             ax.text(0.5, 0.5, f"Data Error\n{str(e)}", ha='center', va='center', color='red')
 
-    if place_name:
-        loc_str = str(place_name)
-    else:
-        loc_str = f"{lat:.3f} N, {lon:.3f} E"
-
-    title_text = f"Swift-gram (B.C.Amatsubame) ({loc_str}) 【{date_str} JST】\nmodel : {used_model.upper()} | Wind [from / km/h] Temp [℃] Altitude [ft, hPa]"
+    loc_str = str(place_name) if place_name else f"{lat:.3f} N, {lon:.3f} E"
+    title_text = f"Swift-gram (B.C.Amatsubame) ({loc_str}) [{date_str} JST]\nModel: {used_model.upper()} | Wind [from / km/h] Temp [deg C] Altitude [ft, hPa]"
 
     plt.suptitle(title_text, fontsize=15, y=0.98, fontweight='bold', color='darkslategray')
 
-    notice_text = "【無断転載・他者への転送・二次利用を厳禁とします】\n※ 本データは計算値であり大きな誤差を含む可能性があります。フライト判断は各種気象情報を総合的に確認し、自己責任で行ってください。"
-
+    notice_text = "UNAUTHORIZED USE & REDISTRIBUTION PROHIBITED\nCalculated values may contain errors. Use at your own risk."
     fig.text(0.5, 0.005, notice_text, ha='center', va='bottom', fontsize=9, color='crimson', fontweight='bold', linespacing=1.3)
 
     handles, labels = axes[0].get_legend_handles_labels()
