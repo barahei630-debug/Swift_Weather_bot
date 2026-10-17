@@ -7,7 +7,7 @@ import numpy as np
 from datetime import datetime, timedelta, timezone
 
 import matplotlib
-matplotlib.use('Agg')  # GUIなしサーバー環境用
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 from fastapi import FastAPI, Request, HTTPException
@@ -15,13 +15,13 @@ from fastapi.staticfiles import StaticFiles
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging import (
-    Configuration, ApiClient, MessagingApi, ReplyMessageRequest, ImageMessage, TextMessage
+    Configuration, ApiClient, MessagingApi, ReplyMessageRequest,
+    ImageMessage, TextMessage, FlexMessage, FlexContainer
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent, LocationMessageContent
 
 app = FastAPI()
 
-# 静的ファイルの保存先設定
 os.makedirs("/tmp/static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="/tmp/static"), name="static")
 
@@ -31,11 +31,29 @@ CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 handler = WebhookHandler(CHANNEL_SECRET)
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 
-# ユーザーごとの位置情報を一時記憶するメモリ辞書 (lat, lon)
+# ユーザーごとの選択状態を記憶 (lat, lon, name)
 user_locations = {}
 
+# 事前登録した14拠点
+LOCATIONS = {
+    "佐賀": (33.259161, 130.244743),
+    "都城": (31.796475, 131.093485),
+    "西条": (34.404989, 132.713485),
+    "三次": (34.811307, 132.860611),
+    "邑久": (34.677947, 134.077216),
+    "東近江": (35.083163, 136.196634),
+    "鈴鹿": (34.845328, 136.537272),
+    "佐久": (36.249108, 138.431620),
+    "渡良瀬": (36.253481, 139.655928),
+    "茂木": (36.532622, 140.228140),
+    "小山": (36.302975, 139.778813),
+    "一関": (38.934295, 141.158861),
+    "大崎": (38.664064, 141.162129),
+    "上士幌": (43.237823, 143.277613)
+}
+
 # ==========================================
-# 幾何・気象計算関数群
+# 気象計算・画像描画
 # ==========================================
 
 def get_dir_label(deg):
@@ -65,8 +83,7 @@ def find_intersection(h_arr, t_env, t_parcel):
 def estimate_thermal_strength(t_env, t_parcel, h_arr):
     diff = t_parcel - t_env
     valid_mask = diff > 0
-    if not np.any(valid_mask):
-        return 0.0, 0.0
+    if not np.any(valid_mask): return 0.0, 0.0
 
     g = 9.81
     buoyancy_energy = 0.0
@@ -150,8 +167,7 @@ def extract_sounding_at_idx(r, idx, ground_alt_ft, p_lv):
         'qnh': qnh
     }
 
-def generate_full_sounding_image(lat: float, lon: float, date_str: str) -> bytes:
-    """指定された緯度経度・日付で気象データを取得し、4x2のグラフィック画像を生成"""
+def generate_full_sounding_image(lat: float, lon: float, date_str: str, place_name: str = "") -> bytes:
     target_hours_jst = [0, 3, 6, 9, 12, 15, 18, 21]
     models = ["jma_msm", "ecmwf_ifs04"]
     p_lv = np.array([1000, 975, 950, 925, 900, 850, 800, 700])
@@ -381,7 +397,8 @@ def generate_full_sounding_image(lat: float, lon: float, date_str: str) -> bytes
         except Exception as e:
             ax.text(0.5, 0.5, f"Data Error\n{str(e)}", ha='center', va='center', color='red')
 
-    plt.suptitle(f"Aviation Sounding Profile ({lat:.3f} N, {lon:.3f} E) [{date_str} JST]\nModel: {used_model.upper()} | Advanced Flight Weather Analysis",
+    title_place = f" ({place_name})" if place_name else f" ({lat:.3f} N, {lon:.3f} E)"
+    plt.suptitle(f"Aviation Sounding Profile{title_place} [{date_str} JST]\nModel: {used_model.upper()} | Advanced Flight Weather Analysis",
                  fontsize=16, y=0.98, fontweight='bold', color='darkslategray')
 
     handles, labels = axes[0].get_legend_handles_labels()
@@ -395,6 +412,73 @@ def generate_full_sounding_image(lat: float, lon: float, date_str: str) -> bytes
     buf.seek(0)
     return buf.getvalue()
 
+# ==========================================
+# ボタンメニュー (Flex Message) 生成
+# ==========================================
+
+def get_menu_flex_message(current_place="佐賀"):
+    buttons_contents = []
+    
+    # 14拠点をボタングリッド化
+    loc_keys = list(LOCATIONS.keys())
+    for i in range(0, len(loc_keys), 2):
+        row_buttons = []
+        for name in loc_keys[i:i+2]:
+            is_selected = (name == current_place)
+            btn_style = "primary" if is_selected else "secondary"
+            row_buttons.append({
+                "type": "button",
+                "action": {"type": "message", "label": f"📍 {name}", "text": name},
+                "style": btn_style,
+                "size": "sm",
+                "height": "sm"
+            })
+        buttons_contents.append({
+            "type": "box",
+            "layout": "horizontal",
+            "spacing": "sm",
+            "contents": row_buttons
+        })
+
+    flex_json = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#1DB446",
+            "contents": [
+                {"type": "text", "text": "🎈 気象解析メニュー", "weight": "bold", "color": "#FFFFFF", "size": "md"}
+            ]
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "md",
+            "contents": [
+                {"type": "text", "text": f"現在選択中: 【{current_place}】", "weight": "bold", "size": "sm", "color": "#111111"},
+                {"type": "separator"},
+                {"type": "text", "text": "1. 日時を選んで解析出力", "weight": "bold", "size": "xs", "color": "#666666"},
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "spacing": "sm",
+                    "contents": [
+                        {"type": "button", "action": {"type": "message", "label": "📅 今日", "text": "今日"}, "style": "primary", "color": "#007bff"},
+                        {"type": "button", "action": {"type": "message", "label": "📅 明日", "text": "明日"}, "style": "primary", "color": "#17a2b8"}
+                    ]
+                },
+                {"type": "separator"},
+                {"type": "text", "text": "2. 拠点場所を変更", "weight": "bold", "size": "xs", "color": "#666666"},
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "spacing": "xs",
+                    "contents": buttons_contents
+                }
+            ]
+        }
+    }
+    return FlexMessage(alt_text="気象解析メニュー", contents=FlexContainer.from_dict(flex_json))
 
 # ==========================================
 # FastAPI & LINE Webhook ハンドラー
@@ -410,19 +494,15 @@ async def callback(request: Request):
         raise HTTPException(status_code=400, detail="Invalid signature")
     return "OK"
 
-
 @handler.add(MessageEvent, message=LocationMessageContent)
 def handle_location(event):
     user_id = event.source.user_id
-    lat = event.message.latitude
-    lon = event.message.longitude
-    user_locations[user_id] = (lat, lon)
+    lat, lon = event.message.latitude, event.message.longitude
+    user_locations[user_id] = (lat, lon, "現在地")
     
-    # デフォルトで当日(今日)の気象データを生成
     jst = timezone(timedelta(hours=9))
     today_str = datetime.now(jst).strftime("%Y-%m-%d")
-    process_and_reply(event, lat, lon, today_str)
-
+    process_and_reply(event, lat, lon, today_str, "現在地")
 
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_text(event):
@@ -431,73 +511,69 @@ def handle_text(event):
     jst = timezone(timedelta(hours=9))
     now_jst = datetime.now(jst)
 
-    # 1. 緯度・経度の判定 (例: 33.25, 130.24)
-    match_coord = re.match(r'^([+-]?\d+(?:\.\d+)?),\s*([+-]?\d+(?:\.\d+)?)$', text)
-    if match_coord:
-        lat, lon = float(match_coord.group(1)), float(match_coord.group(2))
-        user_locations[user_id] = (lat, lon)
-        today_str = now_jst.strftime("%Y-%m-%d")
-        process_and_reply(event, lat, lon, today_str)
-        return
+    # 現在の記憶場所 (デフォルトは佐賀)
+    current_lat, current_lon, current_name = user_locations.get(user_id, (33.2529, 130.2453, "佐賀"))
 
-    # 位置情報の取得 (保存済みがなければデフォルト佐賀CLP)
-    lat, lon = user_locations.get(user_id, (33.2528864, 130.2453091))
-
-    # 2. 日付指定テキストの判定
-    target_date_str = None
-
-    if text in ["今日", "きょう", "0"]:
-        target_date_str = now_jst.strftime("%Y-%m-%d")
-    elif text in ["明日", "あした", "翌日", "1"]:
-        target_date_str = (now_jst + timedelta(days=1)).strftime("%Y-%m-%d")
-    elif text in ["明後日", "あさって", "2"]:
-        target_date_str = (now_jst + timedelta(days=2)).strftime("%Y-%m-%d")
-    else:
-        # 日付フォーマットの正規表現判定 (例: 2026-10-18 や 10/18)
-        match_full_date = re.match(r'^\d{4}[-/]\d{1,2}[-/]\d{1,2}$', text)
-        match_short_date = re.match(r'^(\d{1,2})[-/](\d{1,2})$', text)
-
-        if match_full_date:
-            target_date_str = text.replace('/', '-')
-        elif match_short_date:
-            m, d = int(match_short_date.group(1)), int(match_short_date.group(2))
-            target_date_str = f"{now_jst.year}-{m:02d}-{d:02d}"
-
-    if target_date_str:
-        process_and_reply(event, lat, lon, target_date_str)
-    else:
+    # A. 登録拠点ボタンが押された場合
+    if text in LOCATIONS:
+        lat, lon = LOCATIONS[text]
+        user_locations[user_id] = (lat, lon, text)
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             line_bot_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
                     messages=[
-                        TextMessage(
-                            text="以下のように送信してください：\n\n"
-                                 "📍 位置情報または座標を入力（例: 33.25, 130.24）\n"
-                                 "📅 日付を指定（例: 「今日」「明日」「10/18」など）"
-                        )
+                        TextMessage(text=f"地点を【{text}】に設定しました！"),
+                        get_menu_flex_message(current_place=text)
                     ]
                 )
             )
+        return
 
+    # B. 座標直接入力の場合
+    match_coord = re.match(r'^([+-]?\d+(?:\.\d+)?),\s*([+-]?\d+(?:\.\d+)?)$', text)
+    if match_coord:
+        lat, lon = float(match_coord.group(1)), float(match_coord.group(2))
+        user_locations[user_id] = (lat, lon, "カスタム位置")
+        today_str = now_jst.strftime("%Y-%m-%d")
+        process_and_reply(event, lat, lon, today_str, "カスタム位置")
+        return
 
-def process_and_reply(event, lat: float, lon: float, date_str: str):
+    # C. 日時切り替えボタンの場合
+    target_date_str = None
+    if text in ["今日", "きょう", "0"]:
+        target_date_str = now_jst.strftime("%Y-%m-%d")
+    elif text in ["明日", "あした", "翌日", "1"]:
+        target_date_str = (now_jst + timedelta(days=1)).strftime("%Y-%m-%d")
+    elif text in ["明後日", "あさって", "2"]:
+        target_date_str = (now_jst + timedelta(days=2)).strftime("%Y-%m-%d")
+
+    if target_date_str:
+        process_and_reply(event, current_lat, current_lon, target_date_str, current_name)
+    else:
+        # メニュー表示
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[get_menu_flex_message(current_place=current_name)]
+                )
+            )
+
+def process_and_reply(event, lat: float, lon: float, date_str: str, place_name: str = ""):
     try:
-        # 1. 解析画像生成
-        img_bytes = generate_full_sounding_image(lat, lon, date_str)
+        img_bytes = generate_full_sounding_image(lat, lon, date_str, place_name)
         
-        # 2. 一時保存
         filename = f"{uuid.uuid4().hex}.png"
         filepath = os.path.join("/tmp/static", filename)
         with open(filepath, "wb") as f:
             f.write(img_bytes)
             
-        # 3. 画像URL構築
         base_url = "https://swift-weather-bot.onrender.com"
         img_url = f"{base_url}/static/{filename}"
         
-        # 4. LINEへ画像返信
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             line_bot_api.reply_message(
@@ -519,7 +595,7 @@ def process_and_reply(event, lat: float, lon: float, date_str: str):
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
                     messages=[
-                        TextMessage(text=f"[{date_str}] の解析エラーが発生しました:\n{e}")
+                        TextMessage(text=f"[{place_name} - {date_str}] の解析エラーが発生しました:\n{e}")
                     ]
                 )
             )
