@@ -22,7 +22,7 @@ from linebot.v3.webhooks import MessageEvent, TextMessageContent, LocationMessag
 
 app = FastAPI()
 
-# 生成した画像を一時保存するディレクトリを作成し、静的ファイルとして公開
+# 静的ファイルの保存先ディレクトリ設定
 os.makedirs("/tmp/static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="/tmp/static"), name="static")
 
@@ -98,19 +98,19 @@ async def callback(request: Request):
 
 
 @handler.add(MessageEvent, message=LocationMessageContent)
-def handle_location(event, request: Request):
+def handle_location(event):
     lat = event.message.latitude
     lon = event.message.longitude
-    process_and_reply(event, request, lat, lon)
+    process_and_reply(event, lat, lon)
 
 
 @handler.add(MessageEvent, message=TextMessageContent)
-def handle_text(event, request: Request):
+def handle_text(event):
     text = event.message.text.strip()
     match = re.match(r'^([+-]?\d+(?:\.\d+)?),\s*([+-]?\d+(?:\.\d+)?)$', text)
     if match:
         lat, lon = float(match.group(1)), float(match.group(2))
-        process_and_reply(event, request, lat, lon)
+        process_and_reply(event, lat, lon)
     else:
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
@@ -126,19 +126,19 @@ def handle_text(event, request: Request):
             )
 
 
-def process_and_reply(event, request: Request, lat: float, lon: float):
+def process_and_reply(event, lat: float, lon: float):
     try:
-        # 1. エマグラム画像生成
+        # 1. 画像生成
         img_bytes = generate_emagram(lat, lon)
         
-        # 2. ランダムなファイル名で Render サーバ上に保存
+        # 2. 一時保存
         filename = f"{uuid.uuid4().hex}.png"
         filepath = os.path.join("/tmp/static", filename)
         with open(filepath, "wb") as f:
             f.write(img_bytes)
             
-        # 3. 自分のRenderサーバーのURLを取得して画像URLを構築
-        base_url = str(request.base_url).rstrip('/')
+        # 3. 画像URL生成
+        base_url = "https://swift-weather-bot.onrender.com"
         img_url = f"{base_url}/static/{filename}"
         
         # 4. LINEへ返信
