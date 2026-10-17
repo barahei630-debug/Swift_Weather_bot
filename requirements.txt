@@ -5,4 +5,3 @@ requests
 matplotlib
 numpy
 metpy
-japanize-matplotlib
